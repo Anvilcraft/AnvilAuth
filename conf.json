@@ -1,0 +1,14 @@
+{
+    "bind": {
+        "ip": "127.0.0.1",
+        "port": 8080
+    },
+    "base_url": "http://localhost:8081/",
+    "postgres_url": "postgres://anvilauth:alec@localhost:5432/anvilauth",
+    "forgejo_url": "http://localhost:8082/",
+    "skin_domains": [
+        "localhost",
+        ".localhost"
+    ],
+    "server_name": "AnvilAuth test server"
+}
