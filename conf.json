@@ -5,10 +5,11 @@
     },
     "base_url": "http://localhost:8081/",
     "postgres_url": "postgres://anvilauth:alec@localhost:5432/anvilauth",
-    "forgejo_url": "http://localhost:8082/",
+    "forgejo_url": "https://git.tilera.org/",
     "skin_domains": [
         "localhost",
-        ".localhost"
+        ".localhost",
+        "git.tilera.org"
     ],
     "server_name": "AnvilAuth test server"
 }

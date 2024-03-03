@@ -43,6 +43,7 @@ pub fn getSkinUrl(self: *State, username: []const u8) !?[]const u8 {
         }
     }
 
+    std.log.info("checking presence of custom skin for user '{s}'", .{username});
     const res = try self.http.fetch(.{
         .method = .HEAD,
         .location = .{ .url = url },

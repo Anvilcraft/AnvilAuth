@@ -5,7 +5,7 @@ const ffi = @import("../../../../../ffi.zig");
 const conutil = @import("../../../../../conutil.zig");
 
 const Id = @import("../../../../../Id.zig");
-const JsonUserProfile = @import("../../../../../JsonUserProfile.zig");
+const jsonUserWriter = @import("../../../../../json_user_writer.zig").jsonUserWriter;
 const State = @import("../../../../../State.zig");
 
 const path_prefix = "/aliapi/sessionserver/session/minecraft/profile/";
@@ -69,23 +69,22 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         const skin_url = try state.getSkinUrl(username);
         defer if (skin_url) |url| state.allocator.free(url);
 
-        const uprofile = try JsonUserProfile.init(
+        var response_data = std.ArrayList(u8).init(state.allocator);
+        defer response_data.deinit();
+        var uprofile = jsonUserWriter(
             state.allocator,
+            response_data.writer(),
+            if (unsigned) null else state.rsa,
+        );
+        try uprofile.writeHeaderAndStartProperties(profile_id, username);
+        try uprofile.texturesProperty(
             profile_id,
             username,
             skin_url orelse state.default_skin_url,
-            if (unsigned) null else state.rsa,
         );
-        defer uprofile.deinit(state.allocator);
+        try uprofile.finish();
 
-        const response_data = try std.json.stringifyAlloc(
-            state.allocator,
-            uprofile,
-            .{ .emit_null_optional_fields = false },
-        );
-        defer state.allocator.free(response_data);
-
-        try req.respond(response_data, .{
+        try req.respond(response_data.items, .{
             .extra_headers = &.{.{
                 .name = "Content-Type",
                 .value = "application/json",
