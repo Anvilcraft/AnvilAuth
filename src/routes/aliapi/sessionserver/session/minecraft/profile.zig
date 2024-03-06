@@ -67,8 +67,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
     if (status.rows() >= 1) {
         const username = status.get([]const u8, 0, 0);
 
-        const skin_url = try state.getSkinUrl(username);
-        defer if (skin_url) |url| state.allocator.free(url);
+        const texture_urls = try state.getTextureUrls(username, profile_id);
 
         var response_data = std.ArrayList(u8).init(state.allocator);
         defer response_data.deinit();
@@ -81,7 +80,8 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         try uprofile.texturesProperty(
             profile_id,
             username,
-            skin_url orelse state.default_skin_url,
+            texture_urls.skin_url orelse state.default_skin_url,
+            texture_urls.cape_url,
         );
         try uprofile.finish();
 

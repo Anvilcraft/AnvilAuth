@@ -40,8 +40,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
     if (sel_dbret.rows() >= 1) {
         const id = sel_dbret.get(UUID, 0, 0);
 
-        const skin_url = try state.getSkinUrl(params.username);
-        defer if (skin_url) |url| state.allocator.free(url);
+        const texture_urls = try state.getTextureUrls(params.username, id);
 
         var profile_json = std.ArrayList(u8).init(state.allocator);
         defer profile_json.deinit();
@@ -50,7 +49,8 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         try uprofile.texturesProperty(
             id,
             params.username,
-            skin_url orelse state.default_skin_url,
+            texture_urls.skin_url orelse state.default_skin_url,
+            texture_urls.cape_url,
         );
         try uprofile.finish();
 

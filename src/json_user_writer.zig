@@ -91,6 +91,7 @@ pub fn JsonUserWriter(Writer: type) type {
             user_id: UUID,
             user_name: []const u8,
             skin_url: []const u8,
+            cape_url: ?[]const u8,
         ) !void {
             var json_data = std.ArrayList(u8).init(self.alloc);
             defer json_data.deinit();
@@ -103,14 +104,22 @@ pub fn JsonUserWriter(Writer: type) type {
                 try write_stream.write(&user_id.toStringCompact());
                 try write_stream.objectField("profileName");
                 try write_stream.write(user_name);
-                try write_stream.objectField("textures");
                 {
+                    try write_stream.objectField("textures");
                     try write_stream.beginObject();
-                    try write_stream.objectField("SKIN");
                     {
+                        try write_stream.objectField("SKIN");
                         try write_stream.beginObject();
                         try write_stream.objectField("url");
                         try write_stream.write(skin_url);
+                        try write_stream.endObject();
+                    }
+
+                    if (cape_url) |cape| {
+                        try write_stream.objectField("CAPE");
+                        try write_stream.beginObject();
+                        try write_stream.objectField("url");
+                        try write_stream.write(cape);
                         try write_stream.endObject();
                     }
                     try write_stream.endObject();

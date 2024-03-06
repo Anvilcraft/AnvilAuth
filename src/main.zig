@@ -110,6 +110,10 @@ pub fn main() !u8 {
         .allocator = alloc,
         .base_url = base_url,
         .forgejo_url = std.mem.trimRight(u8, config_parsed.value.forgejo_url, "/"),
+        .anvillib_url = if (config_parsed.value.anvillib_url) |alu|
+            std.mem.trimRight(u8, alu, "/")
+        else
+            null,
         .skin_domains = config_parsed.value.skin_domains,
         .server_name = config_parsed.value.server_name,
         .http = .{ .allocator = alloc },
@@ -118,15 +122,16 @@ pub fn main() !u8 {
         .rsa = rsa,
         .x509 = x509,
         .default_skin_url = default_skin_url,
-        .skin_cache = State.SkinCache{},
+        .user_cache = State.UserCache{},
     };
     defer state.http.deinit();
     defer {
-        var kiter = state.skin_cache.keyIterator();
-        while (kiter.next()) |key| {
-            alloc.free(key.*);
+        var iter = state.user_cache.iterator();
+        while (iter.next()) |kv| {
+            alloc.free(kv.key_ptr.*);
+            if (kv.value_ptr.cape_url) |cape| alloc.free(cape);
         }
-        state.skin_cache.deinit(alloc);
+        state.user_cache.deinit(alloc);
     }
 
     const addr = try std.net.Address.parseIp(config_parsed.value.bind.ip, config_parsed.value.bind.port);
