@@ -1,10 +1,11 @@
 const std = @import("std");
 const c = ffi.c;
 
+const UUID = @import("uuid").Uuid;
+
 const ffi = @import("../../../../../ffi.zig");
 const conutil = @import("../../../../../conutil.zig");
 
-const Id = @import("../../../../../Id.zig");
 const jsonUserWriter = @import("../../../../../json_user_writer.zig").jsonUserWriter;
 const State = @import("../../../../../State.zig");
 
@@ -18,11 +19,11 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
     const req_url = try std.Uri.parseWithoutScheme(req.head.target);
 
     // This is sound as we only go here if the path starts with path_prefix.
-    const profile_id = Id.parse(req_url.path[path_prefix.len..]) orelse {
+    const profile_id = UUID.fromString(req_url.path[path_prefix.len..]) catch {
         try conutil.sendJsonError(
             req,
             .bad_request,
-            "not a valid UUID: {s} (NOTE: AnvilAuth technically doesn't use UUIDs, this endpoint expects 16 hex-encoded, undelimited bytes.)",
+            "not a valid UUID: {s}",
             .{req_url.path[path_prefix.len..]},
         );
         return;

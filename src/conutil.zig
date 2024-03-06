@@ -89,4 +89,3 @@ pub fn parseQueryParametersOrDefaults(params: []const u8, comptime T: type) Quer
 
     return out;
 }
-

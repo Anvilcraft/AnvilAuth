@@ -1,10 +1,11 @@
 const std = @import("std");
 const c = ffi.c;
 
+const UUID = @import("uuid").Uuid;
+
 const conutil = @import("../../../../../conutil.zig");
 const ffi = @import("../../../../../ffi.zig");
 
-const Id = @import("../../../../../Id.zig");
 const jsonUserWriter = @import("../../../../../json_user_writer.zig").jsonUserWriter;
 const State = @import("../../../../../State.zig");
 
@@ -37,7 +38,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
     if (sel_dbret.cols() != 1) return error.InvalidResultFromPostgresServer;
 
     if (sel_dbret.rows() >= 1) {
-        const id = sel_dbret.get(Id, 0, 0);
+        const id = sel_dbret.get(UUID, 0, 0);
 
         const skin_url = try state.getSkinUrl(params.username);
         defer if (skin_url) |url| state.allocator.free(url);

@@ -36,10 +36,8 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
     const json = try std.json.stringifyAlloc(state.allocator, response_payload, .{});
     defer state.allocator.free(json);
 
-    try req.respond(json, .{
-        .extra_headers = &.{.{
-            .name = "Content-Type",
-            .value = "application/json",
-        }}
-    });
+    try req.respond(json, .{ .extra_headers = &.{.{
+        .name = "Content-Type",
+        .value = "application/json",
+    }} });
 }

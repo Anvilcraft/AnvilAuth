@@ -1,8 +1,9 @@
 const std = @import("std");
 
+const UUID = @import("uuid").Uuid;
+
 const conutil = @import("../../../../conutil.zig");
 
-const Id = @import("../../../../Id.zig");
 const State = @import("../../../../State.zig");
 
 pub fn matches(path: []const u8) bool {
@@ -72,12 +73,12 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
 
     try json_writer.beginArray();
     for (0..@intCast(db_res.rows())) |rowidx| {
-        const id = db_res.get(Id, @intCast(rowidx), 0);
+        const id = db_res.get(UUID, @intCast(rowidx), 0);
         const name = db_res.get([]const u8, @intCast(rowidx), 1);
 
         try json_writer.beginObject();
         try json_writer.objectField("id");
-        try json_writer.write(&id.toString());
+        try json_writer.write(&id.toStringCompact());
         try json_writer.objectField("name");
         try json_writer.write(name);
         try json_writer.endObject();

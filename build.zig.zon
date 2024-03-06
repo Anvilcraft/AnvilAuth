@@ -2,6 +2,11 @@
     .name = "anvilauth",
     .version = "0.0.0",
 
-    .dependencies = .{},
+    .dependencies = .{
+        .uuid = .{
+            .url = "git+https://github.com/silversquirl/zig-uuid.git#66b79e3a32c255c7450fac7764847fd6453e94c5",
+            .hash = "1220c4d64594998417a77f84bc6beba3f8aa7e67c0c69fe060c2a7f6385b4d56a34e",
+        },
+    },
     .paths = .{""},
 }

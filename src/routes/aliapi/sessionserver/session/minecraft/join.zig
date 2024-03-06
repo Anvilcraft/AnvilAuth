@@ -1,10 +1,11 @@
 const std = @import("std");
 const c = ffi.c;
 
+const UUID = @import("uuid").Uuid;
+
 const conutil = @import("../../../../../conutil.zig");
 const ffi = @import("../../../../../ffi.zig");
 
-const Id = @import("../../../../../Id.zig");
 const State = @import("../../../../../State.zig");
 
 pub fn matches(path: []const u8) bool {
@@ -28,13 +29,13 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
     };
     defer req_payload.deinit();
 
-    const access_token = Id.parse(req_payload.value.accessToken) orelse {
-        try conutil.sendJsonError(req, .bad_request, "accessToken is not a valid ID!", .{});
+    const access_token = UUID.fromString(req_payload.value.accessToken) catch {
+        try conutil.sendJsonError(req, .bad_request, "accessToken is not a valid UUID!", .{});
         return;
     };
 
-    const sel_profile = Id.parse(req_payload.value.selectedProfile) orelse {
-        try conutil.sendJsonError(req, .bad_request, "selectedProfile is not a valid ID!", .{});
+    const sel_profile = UUID.fromString(req_payload.value.selectedProfile) catch {
+        try conutil.sendJsonError(req, .bad_request, "selectedProfile is not a valid UUID!", .{});
         return;
     };
 
@@ -45,7 +46,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
     if (dbret.cols() != 1) return error.InvalidResultFromPostgresServer;
 
     if (dbret.rows() >= 1) {
-        const token_user = dbret.get(Id, 0, 0);
+        const token_user = dbret.get(UUID, 0, 0);
         if (std.mem.eql(u8, &sel_profile.bytes, &token_user.bytes)) {
             const ins_dbret = state.db.execParams(
                 \\INSERT INTO joins (userid, serverid)

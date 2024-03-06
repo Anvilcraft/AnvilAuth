@@ -1,9 +1,9 @@
 const std = @import("std");
 const c = ffi.c;
 
-const ffi = @import("ffi.zig");
+const UUID = @import("uuid").Uuid;
 
-const Id = @import("Id.zig");
+const ffi = @import("ffi.zig");
 
 pub fn jsonUserWriter(
     alloc: std.mem.Allocator,
@@ -29,12 +29,12 @@ pub fn JsonUserWriter(Writer: type) type {
 
         const Self = @This();
 
-        pub fn writeHeaderAndStartProperties(self: *Self, id: Id, name: []const u8) !void {
+        pub fn writeHeaderAndStartProperties(self: *Self, id: UUID, name: []const u8) !void {
             std.debug.assert(self.state == .start);
 
             try self.json_stream.beginObject();
             try self.json_stream.objectField("id");
-            try self.json_stream.write(&id.toString());
+            try self.json_stream.write(&id.toStringCompact());
             try self.json_stream.objectField("name");
             try self.json_stream.write(name);
             try self.json_stream.objectField("properties");
@@ -88,7 +88,7 @@ pub fn JsonUserWriter(Writer: type) type {
 
         pub fn texturesProperty(
             self: *Self,
-            user_id: Id,
+            user_id: UUID,
             user_name: []const u8,
             skin_url: []const u8,
         ) !void {
@@ -100,7 +100,7 @@ pub fn JsonUserWriter(Writer: type) type {
                 try write_stream.objectField("timestamp");
                 try write_stream.write(std.time.timestamp());
                 try write_stream.objectField("profileId");
-                try write_stream.write(&user_id.toString());
+                try write_stream.write(&user_id.toStringCompact());
                 try write_stream.objectField("profileName");
                 try write_stream.write(user_name);
                 try write_stream.objectField("textures");

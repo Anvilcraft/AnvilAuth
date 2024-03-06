@@ -1,10 +1,11 @@
 const std = @import("std");
 const c = ffi.c;
 
+const UUID = @import("uuid").Uuid;
+
 const ffi = @import("../../../ffi.zig");
 const conutil = @import("../../../conutil.zig");
 
-const Id = @import("../../../Id.zig");
 const State = @import("../../../State.zig");
 
 pub fn matches(path: []const u8) bool {
@@ -94,7 +95,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         if (sel_result.rows() != 1 or sel_result.cols() != 1)
             return error.InvalidResultFromPostgresServer;
 
-        const userid = sel_result.get(Id, 0, 0);
+        const userid = sel_result.get(UUID, 0, 0);
 
         const Profile = struct {
             name: []const u8,
@@ -120,14 +121,19 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         const client_token: [:0]const u8 = req_payload.value.clientToken orelse gentoken: {
             // TODO: according to https://wiki.vg/Legacy_Mojang_Authentication, the normal server
             // would invalidate all existing tokens here. This makes no sense, so we don't do it.
-            @memcpy(&gen_token_buf, &Id.genRandom(state.rand).toString());
+            var rand_bytes: [16]u8 = undefined;
+            state.rand.bytes(&rand_bytes);
+            @memcpy(&gen_token_buf, &UUID.fromRawBytes(4, rand_bytes)
+                .toStringCompact());
             break :gentoken &gen_token_buf;
         };
 
         // remains valid for one week
         const expiry = std.time.timestamp() + std.time.ms_per_week;
 
-        const tokenid = Id.genRandom(state.rand);
+        var tokenid_bytes: [16]u8 = undefined;
+        state.rand.bytes(&tokenid_bytes);
+        const tokenid = UUID.fromRawBytes(4, tokenid_bytes);
 
         const add_tok_stat = state.db.execParams(
             \\INSERT INTO tokens (id, userid, expiry, client_token)
@@ -138,7 +144,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         defer add_tok_stat.deinit();
         try add_tok_stat.expectCommand();
 
-        const uid_hex = userid.toString();
+        const uid_hex = userid.toStringCompact();
 
         const profile = Profile{
             .name = req_payload.value.username,
@@ -158,7 +164,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
                 },
             } else null,
             .clientToken = client_token,
-            .accessToken = &tokenid.toString(),
+            .accessToken = &tokenid.toStringCompact(),
             .availableProfiles = &.{profile},
             .selectedProfile = profile,
         };

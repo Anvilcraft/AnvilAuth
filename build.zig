@@ -8,6 +8,8 @@ pub fn build(b: *std.Build) void {
         .root_source_file = .{ .path = "assets.zig" },
     });
 
+    const uuid_mod = b.dependency("uuid", .{}).module("uuid");
+
     const exe = b.addExecutable(.{
         .name = "anvilauth",
         .root_source_file = .{ .path = "src/main.zig" },
@@ -17,6 +19,7 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.root_module.addImport("assets", assets_mod);
+    exe.root_module.addImport("uuid", uuid_mod);
 
     exe.linkSystemLibrary("libpq");
     exe.linkSystemLibrary("openssl");

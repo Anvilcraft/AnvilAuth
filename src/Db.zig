@@ -1,9 +1,9 @@
 const std = @import("std");
 
+const UUID = @import("uuid").Uuid;
+
 const ffi = @import("ffi.zig");
 const c = ffi.c;
-
-const Id = @import("Id.zig");
 
 con: *c.PGconn,
 
@@ -67,7 +67,7 @@ pub fn execParams(self: Db, query: [:0]const u8, params: anytype) Result {
                 len.* = @intCast(bytes.len);
                 format.* = 1;
             },
-            Id => {
+            UUID => {
                 val.* = &param.bytes;
                 len.* = param.bytes.len;
                 format.* = 1;
@@ -133,7 +133,7 @@ pub const Result = struct {
     pub inline fn get(self: Result, comptime T: type, row: c_int, col: c_int) T {
         return switch (T) {
             []const u8 => c.PQgetvalue(self.res, row, col)[0..@intCast(c.PQgetlength(self.res, row, col))],
-            Id => .{ .bytes = c.PQgetvalue(self.res, row, col)[0..16].* },
+            UUID => .{ .bytes = c.PQgetvalue(self.res, row, col)[0..16].* },
             else => @compileError("unsuppored type: " ++ @typeName(T)),
         };
     }
