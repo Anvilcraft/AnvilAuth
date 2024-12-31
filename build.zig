@@ -5,14 +5,14 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const assets_mod = b.addModule("assets", .{
-        .root_source_file = .{ .path = "assets.zig" },
+        .root_source_file = b.path("assets.zig"),
     });
 
     const uuid_mod = b.dependency("uuid", .{}).module("uuid");
 
     const exe = b.addExecutable(.{
         .name = "anvilauth",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = true,
@@ -21,8 +21,8 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("assets", assets_mod);
     exe.root_module.addImport("uuid", uuid_mod);
 
-    exe.linkSystemLibrary("libpq");
-    exe.linkSystemLibrary("openssl");
+    exe.linkSystemLibrary("pq");
+    exe.linkSystemLibrary("crypto");
 
     b.installArtifact(exe);
 

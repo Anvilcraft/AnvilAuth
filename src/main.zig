@@ -109,6 +109,7 @@ pub fn main() !u8 {
     var state = State{
         .allocator = alloc,
         .base_url = base_url,
+        .domain = config_parsed.value.domain,
         .forgejo_url = std.mem.trimRight(u8, config_parsed.value.forgejo_url, "/"),
         .anvillib_url = if (config_parsed.value.anvillib_url) |alu|
             std.mem.trimRight(u8, alu, "/")

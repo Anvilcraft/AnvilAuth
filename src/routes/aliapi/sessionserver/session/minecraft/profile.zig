@@ -8,6 +8,7 @@ const conutil = @import("../../../../../conutil.zig");
 
 const jsonUserWriter = @import("../../../../../json_user_writer.zig").jsonUserWriter;
 const State = @import("../../../../../State.zig");
+const UserID = @import("../../../../../UserID.zig");
 
 const path_prefix = "/aliapi/sessionserver/session/minecraft/profile/";
 
@@ -16,15 +17,18 @@ pub fn matches(path: []const u8) bool {
 }
 
 pub fn call(req: *std.http.Server.Request, state: *State) !void {
-    const req_url = try std.Uri.parseWithoutScheme(req.head.target);
+    const req_url = try std.Uri.parseAfterScheme("", req.head.target);
+    const url_path = switch (req_url.path) {
+        inline .raw, .percent_encoded => |s| s,
+    };
 
     // This is sound as we only go here if the path starts with path_prefix.
-    const profile_id = UUID.fromString(req_url.path[path_prefix.len..]) catch {
+    const profile_id = UUID.fromString(url_path[path_prefix.len..]) catch {
         try conutil.sendJsonError(
             req,
             .bad_request,
             "not a valid UUID: {s}",
-            .{req_url.path[path_prefix.len..]},
+            .{url_path[url_path.len..]},
         );
         return;
     };
@@ -65,9 +69,15 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
     if (status.cols() != 1) return error.InvalidResultFromPostgresServer;
 
     if (status.rows() >= 1) {
-        const username = status.get([]const u8, 0, 0);
+        const user_id = UserID{
+            .name = status.get([]const u8, 0, 0),
+            .domain = state.domain,
+        };
 
-        const texture_urls = try state.getTextureUrls(username, profile_id);
+        const userid_str = try std.fmt.allocPrint(state.allocator, "{}", .{user_id});
+        defer state.allocator.free(userid_str);
+
+        const texture_urls = try state.getTextureUrls(user_id.name, profile_id);
 
         var response_data = std.ArrayList(u8).init(state.allocator);
         defer response_data.deinit();
@@ -76,10 +86,10 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
             response_data.writer(),
             if (unsigned) null else state.rsa,
         );
-        try uprofile.writeHeaderAndStartProperties(profile_id, username);
+        try uprofile.writeHeaderAndStartProperties(profile_id, userid_str);
         try uprofile.texturesProperty(
             profile_id,
-            username,
+            userid_str,
             texture_urls.skin_url orelse state.default_skin_url,
             texture_urls.cape_url,
         );

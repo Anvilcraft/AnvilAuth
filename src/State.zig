@@ -13,6 +13,7 @@ pub const UserCache = std.StringHashMapUnmanaged(struct {
 
 allocator: std.mem.Allocator,
 base_url: []const u8,
+domain: []const u8,
 forgejo_url: []const u8,
 anvillib_url: ?[]const u8,
 skin_domains: []const []const u8,
@@ -72,7 +73,7 @@ pub fn getTextureUrls(self: *State, username: []const u8, uuid: UUID) !TextureUr
         self.allocator.free(skin_url);
         break :skin null;
     };
-    errdefer self.allocator.free(skin_url);
+    errdefer if (skin_url) |url| self.allocator.free(url);
 
     const cape_url = cape: {
         if (self.anvillib_url == null) break :cape null;
@@ -100,7 +101,7 @@ pub fn getTextureUrls(self: *State, username: []const u8, uuid: UUID) !TextureUr
                 },
             );
             defer players_req.deinit();
-            try players_req.send(.{});
+            try players_req.send();
             try players_req.wait();
 
             if (players_req.response.status != .ok) {
@@ -144,7 +145,7 @@ pub fn getTextureUrls(self: *State, username: []const u8, uuid: UUID) !TextureUr
         );
         defer capes_req.deinit();
 
-        try capes_req.send(.{});
+        try capes_req.send();
         try capes_req.wait();
 
         var capes_json_reader = std.json.reader(self.allocator, capes_req.reader());

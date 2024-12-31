@@ -36,7 +36,7 @@ pub fn parseQueryParametersFromUri(uri: std.Uri, comptime T: type) QueryParamete
     return if (uri.query) |q| try parseQueryParameters(q, T) else error.MissingParameter;
 }
 
-pub fn parseQueryParameters(params: []const u8, comptime T: type) QueryParameterError!T {
+pub fn parseQueryParameters(params: std.Uri.Component, comptime T: type) QueryParameterError!T {
     const DefaultedT = comptime blk: {
         const info = @typeInfo(T);
         var opt_fields: [info.Struct.fields.len]std.builtin.Type.StructField = undefined;
@@ -52,7 +52,7 @@ pub fn parseQueryParameters(params: []const u8, comptime T: type) QueryParameter
         }
 
         break :blk @Type(.{ .Struct = .{
-            .layout = .Auto,
+            .layout = .auto,
             .fields = &opt_fields,
             .decls = &.{},
             .is_tuple = false,
@@ -69,10 +69,15 @@ pub fn parseQueryParameters(params: []const u8, comptime T: type) QueryParameter
     return out;
 }
 
-pub fn parseQueryParametersOrDefaults(params: []const u8, comptime T: type) QueryParameterError!T {
+pub fn parseQueryParametersOrDefaults(params: std.Uri.Component, comptime T: type) QueryParameterError!T {
+    const params_str = switch (params) {
+        // TODO: handle escape sequences
+        inline .raw, .percent_encoded => |s| s,
+    };
+
     var out: T = .{};
 
-    var iter = std.mem.splitScalar(u8, params, '&');
+    var iter = std.mem.splitScalar(u8, params_str, '&');
     while (iter.next()) |param| {
         var psplit = std.mem.splitScalar(u8, param, '=');
         const key = psplit.next() orelse return error.InvalidParameters;

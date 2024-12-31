@@ -3,6 +3,7 @@ bind: struct {
     port: u16,
 },
 base_url: []const u8,
+domain: []const u8,
 postgres_url: [:0]const u8,
 forgejo_url: []const u8,
 anvillib_url: ?[]const u8,

@@ -5,6 +5,7 @@ const UUID = @import("uuid").Uuid;
 const conutil = @import("../../../../conutil.zig");
 
 const State = @import("../../../../State.zig");
+const UserID = @import("../../../../UserID.zig");
 
 pub fn matches(path: []const u8) bool {
     return std.mem.eql(u8, path, "/aliapi/api/profiles/minecraft");
@@ -25,7 +26,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
     defer json_reader.deinit();
 
     const usernames_req = try std.json.parseFromTokenSource(
-        [][]u8,
+        []UserID,
         state.allocator,
         &json_reader,
         .{},
@@ -42,20 +43,22 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         return;
     }
 
-    for (usernames_req.value) |username| {
-        for (username) |*char|
-            char.* = std.ascii.toLower(char.*);
-    }
-
     var param_str = std.ArrayList(u8).init(state.allocator);
     defer param_str.deinit();
     try param_str.append('{');
-    for (usernames_req.value, 0..) |username, i| {
+    var i: usize = 0;
+    for (usernames_req.value) |username| {
+        // TODO: handle other domains
+        if (username.domain == null or
+            !std.mem.eql(u8, username.domain.?, state.domain)) continue;
         if (i != 0) try param_str.append(',');
-        try param_str.appendSlice(username);
+        try param_str.appendSlice(username.name);
+        i += 1;
     }
     try param_str.append('}');
     try param_str.append(0);
+
+    _ = std.ascii.lowerString(param_str.items, param_str.items);
 
     const db_res = state.db.execParams(
         \\SELECT id, name FROM users

@@ -7,6 +7,7 @@ const ffi = @import("../../../ffi.zig");
 const conutil = @import("../../../conutil.zig");
 
 const State = @import("../../../State.zig");
+const UserID = @import("../../../UserID.zig");
 
 pub fn matches(path: []const u8) bool {
     return std.mem.eql(u8, path, "/aliapi/authserver/authenticate");
@@ -24,7 +25,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
     }
 
     const Request = struct {
-        username: [:0]const u8,
+        username: UserID,
         password: []const u8,
         clientToken: ?[:0]const u8 = null,
         requestUser: bool = false,
@@ -32,7 +33,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
 
     var json_reader = std.json.reader(state.allocator, try req.reader());
     defer json_reader.deinit();
-    const req_payload = std.json.parseFromTokenSource(Request, state.allocator, &json_reader, .{
+    var req_payload = std.json.parseFromTokenSource(Request, state.allocator, &json_reader, .{
         .ignore_unknown_fields = true,
     }) catch |e| {
         try conutil.sendJsonError(req, .bad_request, "unable to parse JSON payload: {}", .{e});
@@ -40,16 +41,23 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
     };
     defer req_payload.deinit();
 
-    std.log.info("authentification attempt from user {s}", .{req_payload.value.username});
+    std.log.info("authentification attempt from user {}", .{req_payload.value.username});
+
+    if (req_payload.value.username.domain == null)
+        req_payload.value.username.domain = state.domain;
 
     const valid = valid: {
+        if (req_payload.value.username.domain == null or
+            !std.mem.eql(u8, req_payload.value.username.domain.?, state.domain))
+            break :valid false;
+
         const forgejo_url = try std.fmt.allocPrint(state.allocator, "{s}/api/v1/user", .{state.forgejo_url});
         defer state.allocator.free(forgejo_url);
 
         const unenc_auth = try std.fmt.allocPrint(
             state.allocator,
             "{s}:{s}",
-            .{ req_payload.value.username, req_payload.value.password },
+            .{ req_payload.value.username.name, req_payload.value.password },
         );
         defer state.allocator.free(unenc_auth);
 
@@ -79,7 +87,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         // Ensure user record exists
         const insert_result = state.db.execParams(
             "INSERT INTO users (id, name) VALUES (gen_random_uuid(), $1) ON CONFLICT DO NOTHING;",
-            .{req_payload.value.username},
+            .{req_payload.value.username.name},
         );
         defer insert_result.deinit();
         try insert_result.expectCommand();
@@ -87,7 +95,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         // Get user UUID
         const sel_result = state.db.execParams(
             "SELECT id FROM users WHERE name=$1::text;",
-            .{req_payload.value.username},
+            .{req_payload.value.username.name},
         );
         defer sel_result.deinit();
         try sel_result.expectTuples();
@@ -98,7 +106,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         const userid = sel_result.get(UUID, 0, 0);
 
         const Profile = struct {
-            name: []const u8,
+            name: UserID,
             id: []const u8,
         };
 
@@ -153,7 +161,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
 
         const res_payload = ResponsePayload{
             .user = if (req_payload.value.requestUser) .{
-                .username = req_payload.value.username,
+                .username = req_payload.value.username.name,
                 .id = &uid_hex,
                 .properties = &.{
                     // There is no acceptable real-world use-case where this would be incorrect.
@@ -183,7 +191,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
             }},
         });
     } else {
-        std.log.warn("credentials invalid", .{});
+        std.log.warn("user invalid", .{});
 
         // .forbidden makes no sense here, but that was mojank's idea
         try conutil.sendJsonError(req, .forbidden, "invalid credentials", .{});

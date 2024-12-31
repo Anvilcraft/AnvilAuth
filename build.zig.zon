@@ -4,8 +4,8 @@
 
     .dependencies = .{
         .uuid = .{
-            .url = "git+https://github.com/silversquirl/zig-uuid.git#66b79e3a32c255c7450fac7764847fd6453e94c5",
-            .hash = "1220c4d64594998417a77f84bc6beba3f8aa7e67c0c69fe060c2a7f6385b4d56a34e",
+            .url = "git+https://github.com/lordmzte/zig-uuid.git#b26017fe43b235d7cfcca92faa181f3bbec5eb75",
+            .hash = "1220c7885ac52da032798d56a353454d1f48d729ba7e7beec322d88583345b0289b0",
         },
     },
     .paths = .{""},
