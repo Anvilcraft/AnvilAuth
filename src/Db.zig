@@ -43,7 +43,7 @@ pub fn execParams(self: Db, query: [:0]const u8, params: anytype) Result {
     var fba = std.heap.FixedBufferAllocator.init(&args_buf);
     const alloc = fba.allocator();
 
-    const nparams = @typeInfo(@TypeOf(params)).Struct.fields.len;
+    const nparams = @typeInfo(@TypeOf(params)).@"struct".fields.len;
 
     const vals = alloc.alloc([*]const u8, nparams) catch return Result.oom;
     const lengths = alloc.alloc(c_int, nparams) catch return Result.oom;

@@ -1,6 +1,7 @@
 .{
-    .name = "anvilauth",
+    .name = .anvilauth,
     .version = "0.0.0",
+    .fingerprint = 0x4d6b7d4ae4a8b877,
 
     .dependencies = .{
         .uuid = .{

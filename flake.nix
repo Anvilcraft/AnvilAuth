@@ -13,6 +13,8 @@
     {
       devShells.default = pkgs.mkShell {
         buildInputs = with pkgs; [
+          zig_0_14
+
           openssl.dev
           postgresql.dev
         ];

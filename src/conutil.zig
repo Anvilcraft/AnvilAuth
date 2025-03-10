@@ -39,19 +39,19 @@ pub fn parseQueryParametersFromUri(uri: std.Uri, comptime T: type) QueryParamete
 pub fn parseQueryParameters(params: std.Uri.Component, comptime T: type) QueryParameterError!T {
     const DefaultedT = comptime blk: {
         const info = @typeInfo(T);
-        var opt_fields: [info.Struct.fields.len]std.builtin.Type.StructField = undefined;
+        var opt_fields: [info.@"struct".fields.len]std.builtin.Type.StructField = undefined;
 
-        for (&opt_fields, info.Struct.fields) |*ofield, field| {
+        for (&opt_fields, info.@"struct".fields) |*ofield, field| {
             ofield.* = .{
                 .name = field.name,
                 .type = ?field.type,
-                .default_value = @as(*const ?field.type, &null),
+                .default_value_ptr = @as(*const ?field.type, &null),
                 .is_comptime = false,
                 .alignment = 0,
             };
         }
 
-        break :blk @Type(.{ .Struct = .{
+        break :blk @Type(.{ .@"struct" = .{
             .layout = .auto,
             .fields = &opt_fields,
             .decls = &.{},

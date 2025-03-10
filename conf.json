@@ -14,5 +14,6 @@
         "git.tilera.org",
         "s3.tilera.xyz"
     ],
-    "server_name": "AnvilAuth test server"
+    "server_name": "AnvilAuth test server",
+    "con_workers": 8
 }

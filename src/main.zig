@@ -69,7 +69,7 @@ pub fn main() !u8 {
     var rand = rand: {
         var seed: [32]u8 = undefined;
         std.crypto.random.bytes(&seed);
-        break :rand std.rand.DefaultCsprng.init(seed);
+        break :rand std.Random.DefaultCsprng.init(seed);
     };
 
     const rsa = c.RSA_new() orelse return error.OutOfMemory;
@@ -139,12 +139,18 @@ pub fn main() !u8 {
     var server = try addr.listen(.{});
     std.log.info("listening on {}", .{addr});
 
+    var pool: std.Thread.Pool = undefined;
+    try pool.init(.{
+        .allocator = alloc,
+        .n_jobs = config_parsed.value.con_workers,
+    });
+    defer pool.deinit();
+
     while (true) {
         var con = try server.accept();
         errdefer con.stream.close();
 
-        const thread = try std.Thread.spawn(.{}, handleConnection, .{ con, &state });
-        thread.detach();
+        try pool.spawn(handleConnection, .{ con, &state });
     }
 
     return 0;
