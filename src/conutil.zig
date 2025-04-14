@@ -94,3 +94,20 @@ pub fn parseQueryParametersOrDefaults(params: std.Uri.Component, comptime T: typ
 
     return out;
 }
+
+pub fn parseJsonPayloadOrRepondErr(
+    comptime T: type,
+    alloc: std.mem.Allocator,
+    req: *std.http.Server.Request,
+) !?std.json.Parsed(T) {
+    var json_reader = std.json.reader(alloc, try req.reader());
+    defer json_reader.deinit();
+    const req_payload = std.json.parseFromTokenSource(T, alloc, &json_reader, .{
+        .ignore_unknown_fields = true,
+    }) catch |e| {
+        try sendJsonError(req, .bad_request, "unable to parse JSON payload: {}", .{e});
+        return null;
+    };
+
+    return req_payload;
+}

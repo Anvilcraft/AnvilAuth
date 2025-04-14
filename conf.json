@@ -6,8 +6,12 @@
     "base_url": "http://localhost:8081/",
     "domain": "localhost",
     "postgres_url": "postgres://anvilauth:alec@localhost:5432/anvilauth",
-    "forgejo_url": "https://git.tilera.org/",
     "anvillib_url": "https://api.tilera.xyz/anvillib/",
+    "oidc": {
+        "issuer": "https://git.tilera.org",
+        "id": "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        "secret": "gto_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    },
     "skin_domains": [
         "localhost",
         ".localhost",

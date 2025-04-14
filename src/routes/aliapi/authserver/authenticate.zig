@@ -8,6 +8,7 @@ const conutil = @import("../../../conutil.zig");
 
 const State = @import("../../../State.zig");
 const UserID = @import("../../../UserID.zig");
+const UserResponse = @import("../../../util/UserResponse.zig");
 
 pub fn matches(path: []const u8) bool {
     return std.mem.eql(u8, path, "/aliapi/authserver/authenticate");
@@ -31,14 +32,11 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         requestUser: bool = false,
     };
 
-    var json_reader = std.json.reader(state.allocator, try req.reader());
-    defer json_reader.deinit();
-    var req_payload = std.json.parseFromTokenSource(Request, state.allocator, &json_reader, .{
-        .ignore_unknown_fields = true,
-    }) catch |e| {
-        try conutil.sendJsonError(req, .bad_request, "unable to parse JSON payload: {}", .{e});
-        return;
-    };
+    var req_payload = try conutil.parseJsonPayloadOrRepondErr(
+        Request,
+        state.allocator,
+        req,
+    ) orelse return;
     defer req_payload.deinit();
 
     std.log.info("authentification attempt from user {}", .{req_payload.value.username});
@@ -47,54 +45,41 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         req_payload.value.username.domain = state.domain;
 
     const valid = valid: {
-        if (req_payload.value.username.domain == null or
-            !std.mem.eql(u8, req_payload.value.username.domain.?, state.domain))
+        if (!std.mem.eql(u8, req_payload.value.username.domain.?, state.domain))
             break :valid false;
 
-        const forgejo_url = try std.fmt.allocPrint(state.allocator, "{s}/api/v1/user", .{state.forgejo_url});
-        defer state.allocator.free(forgejo_url);
+        const sel_dbret = state.db.execParams(
+            \\SELECT 1
+            \\FROM users, tokens
+            \\WHERE
+            \\  tokens.id = $1::text AND
+            \\  users.name = $2::text AND
+            \\  tokens.userid = users.id;
+        , .{ req_payload.value.password, req_payload.value.username.name });
+        defer sel_dbret.deinit();
+        try sel_dbret.expectTuples();
 
-        const unenc_auth = try std.fmt.allocPrint(
-            state.allocator,
-            "{s}:{s}",
-            .{ req_payload.value.username.name, req_payload.value.password },
-        );
-        defer state.allocator.free(unenc_auth);
+        if (sel_dbret.cols() != 1) return error.InvalidResultFromPostgresServer;
 
-        const auth_prefix = "Basic ";
-        const auth_str = try state.allocator.alloc(
-            u8,
-            auth_prefix.len + std.base64.standard.Encoder.calcSize(unenc_auth.len),
-        );
-        defer state.allocator.free(auth_str);
+        const valid = sel_dbret.rows() > 0;
 
-        @memcpy(auth_str[0..auth_prefix.len], auth_prefix);
-        _ = std.base64.standard.Encoder.encode(auth_str[auth_prefix.len..], unenc_auth);
+        const set_last_use_dbret = state.db.execParams(
+            \\UPDATE tokens
+            \\SET last_use = EXTRACT(EPOCH FROM CURRENT_TIMESTAMP)
+            \\WHERE id = $1::text;
+        , .{req_payload.value.password});
+        defer set_last_use_dbret.deinit();
+        try set_last_use_dbret.expectCommand();
 
-        var fres = try state.http.fetch(.{
-            .location = .{ .url = forgejo_url },
-            .extra_headers = &.{.{
-                .name = "Authorization",
-                .value = auth_str,
-            }},
-        });
-
-        break :valid fres.status.class() == .success;
+        break :valid valid;
     };
 
     if (valid) {
         std.log.info("issuing new token", .{});
-        // Ensure user record exists
-        const insert_result = state.db.execParams(
-            "INSERT INTO users (id, name) VALUES (gen_random_uuid(), $1) ON CONFLICT DO NOTHING;",
-            .{req_payload.value.username.name},
-        );
-        defer insert_result.deinit();
-        try insert_result.expectCommand();
 
         // Get user UUID
         const sel_result = state.db.execParams(
-            "SELECT id FROM users WHERE name=$1::text;",
+            "SELECT id FROM users WHERE name = $1::text;",
             .{req_payload.value.username.name},
         );
         defer sel_result.deinit();
@@ -111,14 +96,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         };
 
         const ResponsePayload = struct {
-            user: ?struct {
-                username: []const u8,
-                properties: []const struct {
-                    name: []const u8,
-                    value: []const u8,
-                },
-                id: []const u8,
-            } = null,
+            user: ?UserResponse,
             clientToken: []const u8,
             accessToken: []const u8,
             availableProfiles: []const Profile,
@@ -127,7 +105,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
 
         var gen_token_buf: [32:0]u8 = undefined;
         const client_token: [:0]const u8 = req_payload.value.clientToken orelse gentoken: {
-            // TODO: according to https://wiki.vg/Legacy_Mojang_Authentication, the normal server
+            // According to https://wiki.vg/Legacy_Mojang_Authentication, the normal server
             // would invalidate all existing tokens here. This makes no sense, so we don't do it.
             var rand_bytes: [16]u8 = undefined;
             state.rand.bytes(&rand_bytes);
@@ -137,14 +115,14 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         };
 
         // remains valid for one week
-        const expiry = std.time.timestamp() + std.time.ms_per_week;
+        const expiry = std.time.timestamp() + std.time.s_per_week;
 
         var tokenid_bytes: [16]u8 = undefined;
         state.rand.bytes(&tokenid_bytes);
         const tokenid = UUID.fromRawBytes(4, tokenid_bytes);
 
         const add_tok_stat = state.db.execParams(
-            \\INSERT INTO tokens (id, userid, expiry, client_token)
+            \\INSERT INTO sessions (id, userid, expiry, client_token)
             \\  VALUES ($1::uuid, $2::uuid, $3::bigint, $4::text);
         ,
             .{ tokenid, userid, expiry, client_token },
@@ -163,13 +141,6 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
             .user = if (req_payload.value.requestUser) .{
                 .username = req_payload.value.username.name,
                 .id = &uid_hex,
-                .properties = &.{
-                    // There is no acceptable real-world use-case where this would be incorrect.
-                    .{
-                        .name = "preferredLanguage",
-                        .value = "en",
-                    },
-                },
             } else null,
             .clientToken = client_token,
             .accessToken = &tokenid.toStringCompact(),

@@ -19,14 +19,11 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         serverId: [:0]const u8,
     };
 
-    var json_reader = std.json.reader(state.allocator, try req.reader());
-    defer json_reader.deinit();
-    const req_payload = std.json.parseFromTokenSource(Request, state.allocator, &json_reader, .{
-        .ignore_unknown_fields = true,
-    }) catch |e| {
-        try conutil.sendJsonError(req, .bad_request, "unable to parse JSON payload: {}", .{e});
-        return;
-    };
+    const req_payload = try conutil.parseJsonPayloadOrRepondErr(
+        Request,
+        state.allocator,
+        req,
+    ) orelse return;
     defer req_payload.deinit();
 
     const access_token = UUID.fromString(req_payload.value.accessToken) catch {
@@ -39,7 +36,7 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         return;
     };
 
-    const dbret = state.db.execParams("SELECT userid FROM tokens WHERE id=$1::uuid;", .{access_token});
+    const dbret = state.db.execParams("SELECT userid FROM sessions WHERE id=$1::uuid;", .{access_token});
     defer dbret.deinit();
     try dbret.expectTuples();
 

@@ -13,19 +13,34 @@ pub fn initDb(self: Db) !void {
     const query =
         \\CREATE TABLE IF NOT EXISTS users (
         \\  id UUID NOT NULL PRIMARY KEY,
-        \\  name VARCHAR NOT NULL UNIQUE
+        \\  oidc_sub VARCHAR NOT NULL UNIQUE,
+        \\  name VARCHAR NOT NULL UNIQUE,
+        \\  skin_uri VARCHAR
         \\);
         \\
-        \\CREATE TABLE IF NOT EXISTS tokens (
+        \\CREATE TABLE IF NOT EXISTS sessions (
         \\  id UUID NOT NULL PRIMARY KEY,
-        \\  userid UUID NOT NULL REFERENCES users (id),
+        \\  userid UUID NOT NULL,
         \\  expiry BIGINT NOT NULL,
-        \\  client_token VARCHAR NOT NULL
+        \\  client_token VARCHAR NOT NULL,
+        \\
+        \\  FOREIGN KEY (userid) REFERENCES users (id)
         \\);
         \\
         \\CREATE TABLE IF NOT EXISTS joins (
-        \\  userid UUID NOT NULL PRIMARY KEY REFERENCES users (id),
-        \\  serverid VARCHAR NOT NULL
+        \\  userid UUID NOT NULL PRIMARY KEY,
+        \\  serverid VARCHAR NOT NULL,
+        \\
+        \\  FOREIGN KEY (userid) REFERENCES users (id)
+        \\);
+        \\
+        \\CREATE TABLE IF NOT EXISTS tokens (
+        \\  id CHAR(32) NOT NULL PRIMARY KEY,
+        \\  userid UUID NOT NULL,
+        \\  creation BIGINT NOT NULL,
+        \\  last_use BIGINT NOT NULL,
+        \\
+        \\  FOREIGN KEY (userid) REFERENCES users (id)
         \\);
     ;
 
@@ -45,35 +60,12 @@ pub fn execParams(self: Db, query: [:0]const u8, params: anytype) Result {
 
     const nparams = @typeInfo(@TypeOf(params)).@"struct".fields.len;
 
-    const vals = alloc.alloc([*]const u8, nparams) catch return Result.oom;
-    const lengths = alloc.alloc(c_int, nparams) catch return Result.oom;
-    const formats = alloc.alloc(c_int, nparams) catch return Result.oom;
+    const vals = alloc.alloc(?[*]const u8, nparams) catch return .oom;
+    const lengths = alloc.alloc(c_int, nparams) catch return .oom;
+    const formats = alloc.alloc(c_int, nparams) catch return .oom;
 
     inline for (params, vals, lengths, formats) |param, *val, *len, *format| {
-        switch (@TypeOf(param)) {
-            []const u8, [:0]const u8 => {
-                val.* = param.ptr;
-                len.* = @intCast(param.len);
-                format.* = 1;
-            },
-            [*:0]const u8 => {
-                val.* = param;
-                len.* = -1;
-                format.* = 0;
-            },
-            i64 => {
-                const bytes = std.mem.asBytes(&std.mem.nativeToBig(i64, param));
-                val.* = bytes.ptr;
-                len.* = @intCast(bytes.len);
-                format.* = 1;
-            },
-            UUID => {
-                val.* = &param.bytes;
-                len.* = param.bytes.len;
-                format.* = 1;
-            },
-            else => @compileError("unsupported parameter type: " ++ @typeName(@TypeOf(param))),
-        }
+        setParam(alloc, &param, val, len, format) catch return .oom;
     }
 
     const ret = c.PQexecParams(
@@ -87,6 +79,50 @@ pub fn execParams(self: Db, query: [:0]const u8, params: anytype) Result {
         1,
     );
     return .{ .res = ret };
+}
+
+fn setParam(
+    alloc: std.mem.Allocator,
+    param: anytype,
+    val: *?[*]const u8,
+    len: *c_int,
+    format: *c_int,
+) !void {
+    switch (@typeInfo(@TypeOf(param.*))) {
+        .optional => |_| {
+            if (param.*) |*p| {
+                try setParam(alloc, p, val, len, format);
+            } else {
+                val.* = null;
+                len.* = 0;
+                format.* = 1;
+            }
+        },
+        else => switch (@TypeOf(param.*)) {
+            []const u8, [:0]const u8 => {
+                val.* = param.ptr;
+                len.* = @intCast(param.len);
+                format.* = 1;
+            },
+            [*:0]const u8 => {
+                val.* = param.*;
+                len.* = -1;
+                format.* = 0;
+            },
+            i64 => {
+                const bytes = try alloc.dupe(u8, std.mem.asBytes(&std.mem.nativeToBig(i64, param.*)));
+                val.* = bytes.ptr;
+                len.* = @intCast(bytes.len);
+                format.* = 1;
+            },
+            UUID => {
+                val.* = &param.bytes;
+                len.* = param.bytes.len;
+                format.* = 1;
+            },
+            else => @compileError("unsupported parameter type: " ++ @typeName(@TypeOf(param))),
+        },
+    }
 }
 
 pub const Result = struct {
@@ -134,6 +170,11 @@ pub const Result = struct {
         return switch (T) {
             []const u8 => c.PQgetvalue(self.res, row, col)[0..@intCast(c.PQgetlength(self.res, row, col))],
             UUID => .{ .bytes = c.PQgetvalue(self.res, row, col)[0..16].* },
+            i64 => std.mem.readInt(
+                i64,
+                c.PQgetvalue(self.res, row, col)[0..8],
+                .big,
+            ),
             else => @compileError("unsuppored type: " ++ @typeName(T)),
         };
     }

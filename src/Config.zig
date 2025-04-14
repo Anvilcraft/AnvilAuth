@@ -1,3 +1,9 @@
+pub const OIDC = struct {
+    issuer: []const u8,
+    id: []const u8,
+    secret: []const u8,
+};
+
 bind: struct {
     ip: []const u8,
     port: u16,
@@ -5,8 +11,8 @@ bind: struct {
 base_url: []const u8,
 domain: []const u8,
 postgres_url: [:0]const u8,
-forgejo_url: []const u8,
 anvillib_url: ?[]const u8,
+oidc: OIDC,
 skin_domains: []const []const u8,
 server_name: []const u8,
 con_workers: usize,

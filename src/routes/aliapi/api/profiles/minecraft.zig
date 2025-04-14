@@ -22,15 +22,11 @@ pub fn call(req: *std.http.Server.Request, state: *State) !void {
         return;
     }
 
-    var json_reader = std.json.reader(state.allocator, try req.reader());
-    defer json_reader.deinit();
-
-    const usernames_req = try std.json.parseFromTokenSource(
+    const usernames_req = try conutil.parseJsonPayloadOrRepondErr(
         []UserID,
         state.allocator,
-        &json_reader,
-        .{},
-    );
+        req,
+    ) orelse return;
     defer usernames_req.deinit();
 
     if (usernames_req.value.len > 10) {

@@ -3,6 +3,7 @@ const c = @import("ffi.zig").c;
 
 const UUID = @import("uuid").Uuid;
 
+const Config = @import("Config.zig");
 const Db = @import("Db.zig");
 
 pub const UserCache = std.StringHashMapUnmanaged(struct {
@@ -11,10 +12,18 @@ pub const UserCache = std.StringHashMapUnmanaged(struct {
     expiration: i64,
 });
 
+pub const OIDCConfig = struct {
+    authorization_endpoint: std.Uri,
+    token_endpoint: std.Uri,
+    userinfo_endpoint: std.Uri,
+    claims_supported: []const []const u8,
+};
+
 allocator: std.mem.Allocator,
 base_url: []const u8,
 domain: []const u8,
-forgejo_url: []const u8,
+oidc: Config.OIDC,
+oidc_config: OIDCConfig,
 anvillib_url: ?[]const u8,
 skin_domains: []const []const u8,
 server_name: []const u8,
@@ -54,26 +63,18 @@ pub fn getTextureUrls(self: *State, username: []const u8, uuid: UUID) !TextureUr
 
     std.log.info("checking presence of custom skin and cape for user '{s}'", .{username});
 
-    const skin_url = skin: {
-        const skin_url = try std.fmt.allocPrint(
-            self.allocator,
-            "{s}/{s}/.anvilauth/raw/branch/master/skin.png",
-            .{ self.forgejo_url, username },
-        );
-        errdefer self.allocator.free(skin_url);
+    var skin_url: ?[]const u8 = null;
+    const skinurl_dbret = self.db.execParams(
+        \\SELECT skin_url FROM users
+        \\WHERE id = $1::uuid;
+    , .{uuid});
+    defer skinurl_dbret.deinit();
+    try skinurl_dbret.expectTuples();
+    if (skinurl_dbret.cols() != 1) return error.InvalidResultFromPostgresServer;
 
-        const skin_res = try self.http.fetch(.{
-            .method = .HEAD,
-            .location = .{ .url = skin_url },
-        });
-
-        if (skin_res.status == .ok)
-            break :skin skin_url;
-
-        self.allocator.free(skin_url);
-        break :skin null;
-    };
-    errdefer if (skin_url) |url| self.allocator.free(url);
+    if (skinurl_dbret.rows() > 0) {
+        skin_url = skinurl_dbret.get([]const u8, 0, 0);
+    }
 
     const cape_url = cape: {
         if (self.anvillib_url == null) break :cape null;

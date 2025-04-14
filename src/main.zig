@@ -106,18 +106,65 @@ pub fn main() !u8 {
     const default_skin_url = try std.fmt.allocPrint(alloc, "{s}/default_skin", .{base_url});
     defer alloc.free(default_skin_url);
 
+    var http = std.http.Client{ .allocator = alloc };
+    defer http.deinit();
+
+    const oidc_issuer = std.mem.trimRight(u8, config_parsed.value.oidc.issuer, "/");
+
+    const OIDCConfig = struct {
+        authorization_endpoint: []const u8,
+        token_endpoint: []const u8,
+        userinfo_endpoint: []const u8,
+        claims_supported: []const []const u8,
+    };
+    const oidc_config: std.json.Parsed(OIDCConfig) = oidc: {
+        std.log.info("querying OpenID configuration", .{});
+        const url = try std.fmt.allocPrint(
+            alloc,
+            "{s}/.well-known/openid-configuration",
+            .{oidc_issuer},
+        );
+        defer alloc.free(url);
+
+        var response = std.ArrayList(u8).init(alloc);
+        defer response.deinit();
+
+        _ = try http.fetch(.{
+            .location = .{ .url = url },
+            .response_storage = .{ .dynamic = &response },
+        });
+
+        break :oidc try std.json.parseFromSlice(
+            OIDCConfig,
+            alloc,
+            response.items,
+            .{ .ignore_unknown_fields = true, .allocate = .alloc_always },
+        );
+    };
+    defer oidc_config.deinit();
+
     var state = State{
         .allocator = alloc,
         .base_url = base_url,
         .domain = config_parsed.value.domain,
-        .forgejo_url = std.mem.trimRight(u8, config_parsed.value.forgejo_url, "/"),
+        .oidc = .{
+            .issuer = oidc_issuer,
+            .id = config_parsed.value.oidc.id,
+            .secret = config_parsed.value.oidc.secret,
+        },
+        .oidc_config = .{
+            .authorization_endpoint = try std.Uri.parse(oidc_config.value.authorization_endpoint),
+            .token_endpoint = try std.Uri.parse(oidc_config.value.token_endpoint),
+            .userinfo_endpoint = try std.Uri.parse(oidc_config.value.userinfo_endpoint),
+            .claims_supported = oidc_config.value.claims_supported,
+        },
         .anvillib_url = if (config_parsed.value.anvillib_url) |alu|
             std.mem.trimRight(u8, alu, "/")
         else
             null,
         .skin_domains = config_parsed.value.skin_domains,
         .server_name = config_parsed.value.server_name,
-        .http = .{ .allocator = alloc },
+        .http = http,
         .db = .{ .con = postgres_con },
         .rand = rand.random(),
         .rsa = rsa,
@@ -125,7 +172,6 @@ pub fn main() !u8 {
         .default_skin_url = default_skin_url,
         .user_cache = State.UserCache{},
     };
-    defer state.http.deinit();
     defer {
         var iter = state.user_cache.iterator();
         while (iter.next()) |kv| {
@@ -184,34 +230,22 @@ fn tryHandleConnection(srv_: std.http.Server, state: *State) !void {
 
         inline for (.{
             @import("routes/root.zig"),
+            @import("routes/oidcredirect.zig"),
+            @import("routes/default_skin.zig"),
             @import("routes/aliapi/index.zig"),
             @import("routes/aliapi/api/profiles/minecraft.zig"),
             @import("routes/aliapi/authserver/authenticate.zig"),
+            @import("routes/aliapi/authserver/refresh.zig"),
             @import("routes/aliapi/sessionserver/session/minecraft/has_joined.zig"),
             @import("routes/aliapi/sessionserver/session/minecraft/join.zig"),
             @import("routes/aliapi/sessionserver/session/minecraft/profile.zig"),
-            @import("routes/default_skin.zig"),
         }) |route| {
             if (route.matches(path)) {
-                route.call(&req, state) catch |e| {
-                    //if (res.state == .waited) {
-                    //    try @import("conutil.zig").sendJsonError(
-                    //        &res,
-                    //        .internal_server_error,
-                    //        "alec",
-                    //        .{},
-                    //    );
-                    //}
-                    return e;
-                };
+                try route.call(&req, state);
                 break;
             }
         } else {
             try req.respond("", .{ .status = .not_found });
-            //res.status = .not_found;
-            //res.transfer_encoding = .{ .content_length = 0 };
-            //try res.send();
-            //try res.finish();
         }
 
         if (srv.state == .closing) break;
